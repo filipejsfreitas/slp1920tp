@@ -1,0 +1,684 @@
+\documentclass[11pt,a4paper]{report}
+
+%\usepackage[utf8]{inputenc}
+\usepackage[portuguese]{babel}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{enumerate}
+\usepackage{indentfirst}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{apalike} % gerar biliografia no estilo 'named' (apalike)
+\usepackage{appendix}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage[skins,minted]{tcolorbox}
+\usepackage{minted}
+\usepackage[hypertexnames=false]{hyperref}
+\usepackage{xspace}
+\usepackage{unicode-math}
+\usepackage{amsmath}
+\usepackage{calc}
+\usepackage{titlesec}
+
+\titleformat{\chapter}[display]   
+{\normalfont\huge\bfseries}{\chaptertitlename\ \thechapter}{20pt}{\Huge}   
+\titlespacing*{\chapter}{0pt}{-50pt}{20pt}
+
+\setminted[haskell]{xleftmargin=20pt, breaklines=true, linenos=true}
+
+\definecolor{mintedbackground}{rgb}{0.95,0.95,0.95}
+\newtcblisting{mintedhaskell}[2][]{%
+    listing engine = minted,
+    minted language = haskell,
+    colback = mintedbackground,
+    title = {#2},
+    listing only,#1
+}
+
+\newtcblisting{mintedc}[2][]{%
+    listing engine = minted,
+    minted language = c,
+    colback = mintedbackground,
+    title = {#2},
+    listing only,#1
+}
+
+\newtcbinputlisting{\hsfile}[3]{%
+    listing engine = minted,
+    minted language = haskell,
+    minted options = {%
+        firstline = #2,
+        lastline = #3,
+        autogobble = true
+    },
+    listing file = {src/#1},
+    listing only,
+    colback = mintedbackground,
+    title = {\centering\makebox[\linewidth][c]{Ficheiro \textit{#1}}}
+}
+
+\graphicspath{ {./Imagens/} }
+
+\setlength{\oddsidemargin}{-1cm}
+\setlength{\textwidth}{18cm}
+\setlength{\headsep}{-1cm}
+\setlength{\textheight}{23cm}
+
+\newcommand{\centertitle}[1]{\centering\makebox[\linewidth][c]{#1}}
+\newcommand{\inlinebox}[1]{\framebox[\widthof{#1} + 7pt][l]{#1}}
+
+\newcommand{\while}[0]{\textit{While}\xspace}
+\newcommand{\ghci}[0]{\textit{GHCi}\xspace}
+\newcommand{\data}[0]{\textit{data}\xspace}
+\newcommand{\parser}[0]{\hyperref[appendix:parser]{\textit{Parser}}\xspace}
+\newcommand{\classshow}[0]{\textit{Show}\xspace}
+\newcommand{\classread}[0]{\textit{Read}\xspace}
+\newcommand{\state}[0]{\textit{State}\xspace}
+\newcommand{\smallstep}[0]{\textit{small-step}\xspace}
+
+
+\title{Semântica das Linguagens de Programação \\ (3º ano da Licenciatura em Ciências da Computação)\\
+       \textbf{Criação de programas em Haskell para Simulação de Semânticas}\\ Relatório de Desenvolvimento
+       }
+\author{Filipe Freitas (A85026)}
+\date{\today}
+
+
+\begin{document}
+
+\maketitle
+
+
+\tableofcontents
+% \listoffigures
+
+\setlength{\parskip}{1em}
+
+\chapter{Introdução} \label{chapter:intro}
+
+\section{Contextualização} \label{section:contexturalizacao}
+
+\par Na sequência da Unidade Curricular de Semântica das Linguagens de Programação, foi proposta a realização de um trabalho que consiste na implementação, em Haskell, de vários simuladores para a linguagem \while que foi estudada nas aulas, de acordo com as semânticas naturais e operacional estruturais que foram abordadas nas aulas, bem como a implementação de simuladores para as Máquinas Abstratas AM também estudadas.
+
+\par Sendo assim, este relatório pretende abordar as implementações criadas, explicar as decisões tomadas ao longo da implementação, e dar exemplos de programas, da sua simulação, e do resultado da sua execução.
+
+\section{Estrutura do Relatório} \label{section:estrutura-relatorio}
+
+\par Este relatório está dividido em 6 partes principais, e contém também 3 anexos.
+
+\par A \hyperref[chapter:intro]{\textit{primeira}}, correspondente a esta introdução, pretende contextualizar o trabalho e explicar a sua estrutura, e explica também a estrutura do código do trabalho.
+
+\par Na \hyperref[chapter:estruturas-linguagem-while]{\textit{segunda parte}} é feita uma introdução à linguagem \while, e são apresentadas as estruturas de dados, correspondentes à mesma, que irão servir de apoio a todo o resto do trabalho.
+
+\par Nas \hyperref[chapter:semantica-natural]{\textit{terceira}} e \hyperref[chapter:semantica-small-step]{\textit{quarta}} partes são apresentadas implementações de semânticas naturais e operacional estruturais para a linguagem \while.
+
+\par Na \hyperref[chapter:maquinas-abstratas]{\textit{quinta parte}} são apresentadas as máquinas abstratas AM, as suas instruções, estruturas, e correspondentes semânticas.
+
+\par Na \hyperref[chapter:concl]{\textit{última parte}} é feita uma conclusão do trabalho realizado.
+
+\par O \autoref{appendix:parser} contém uma explicação de um \parser para a linguagem \while, que permite a tradução de texto de entrada nas estruturas de dados internas que servem de base à linguagem \while.
+
+\par Os Apêndices \hyperref[appendix:interpretador]{\textit{B}} e \hyperref[appendix:compilar]{\textit{C}} descrevem dois modos diferentes de execução dos vários programas: recorrendo ao interpretador \ghci ou compilando em executáveis, respetivamente.
+
+\section{Estrutura do Código} \label{section:estrutura-codigo}
+
+\par O código tende a estar dividido em vários ficheiros, cada um correspondente a uma área da implementação que foi pedida; também tende a separar as estruturas de dados em ficheiros individuais, para aumentar a legibilidade; e também separa cada uma das implementações de semântica e de máquina abstrata pedidas nos seus ficheiros individuais.
+
+\par \label{paragraph:razao-tipos-explicitos} Relativamente às estruturas de dados, a maior parte são implementadas recorrendo a tipos \data ou \textit{newtype}. Esta foi uma decisão consciente de implementação, pois assim permite a declaração de instâncias \classshow e \classread dos mesmos, o que, em conjunção com o \parser que foi criado para a linguagem, torna o processo de visualização da saída do programa bastante mais simples, mesmo no \ghci. Isto tem a desvantagem de diminuir a legibilidade do código; no entanto, foram tomadas precauções para minimizar o impacto desta decisão na leitura do mesmo.
+
+\par As implementações de instâncias \classshow são mantidas nos mesmos locais onde os respetivos tipos são declarados. No entanto, as instâncias de \classread são declaradas no ficheiro \textit{Parser.hs}, o que significa que só estão declaradas se este ficheiro tiver sido importado para a \textit{scope} atual. Mais informações sobre este detalhe são dadas no \autoref{appendix:interpretador}.
+
+\par Para correr cada secção do programa, existe sempre um ficheiro principal que, ao ser importado, permite uma execução correta e completa de todas as funcionalidades do respetivo programa. A indicação do ficheiro principal é sempre indicada em cada secção do relatório, sempre que pertinente.
+
+\par Em cada secção deste relatório, sempre que pertinente, é dada uma indicação de onde se pode encontrar o código ao qual o relatório está a fazer referência.
+
+\newpage
+
+\chapter{Estruturas da Linguagem While} \label{chapter:estruturas-linguagem-while}
+
+\par Neste capítulo vão ser apresentadas as várias estruturas de dados que servem de suporte interno à linguagem \while.
+
+\section{Estados} \label{section:estados}
+
+\inlinebox{Esta secção corresponde à resolução do exercício 8. b) ii) da ficha 1.}
+
+\par Antes de iniciar as estruturas de dados da linguagem \while propriamente ditas, vamos criar uma estrutura de dados para guardar os estados que vão ser necessários durante a interpretação de comandos da linguagem.
+
+\par Sendo assim, e tendo em conta que, nas aulas, estados foram definidos como sendo uma função que, a cada variável, associa o seu valor inteiro correspondente, uma representação natural em Haskell desta definição é uma lista de pares, onde a primeira componente de cada par é o nome da variável, e a segunda componente é o valor da variável no estado atual.
+
+\par Temos, assim, a seguinte definição:
+\hsfile{State.hs}{7}{14}
+
+\par Pela razão já explicada \hyperref[section:estrutura-codigo]{\textit{anteriormente}}, o tipo \state, como é visualizável na saída dos programas, é implementado com o seu próprio tipo e com o seu próprio construtor.
+
+\par É depois definida uma instância de \classshow para o tipo \state, de acordo com a notação utilizada nas aulas:
+\hsfile{State.hs}{16}{18}
+
+\par A seguir, defini uma função para atualizar o valor de uma variável no estado, retornando um novo estado com a variável atualizada.
+\hsfile{State.hs}{20}{25}
+
+\par Defini também uma função para obter o valor de uma variável num dado estado, para simplificar algum do código que se segue.
+\hsfile{State.hs}{27}{30}
+
+\newpage
+
+
+\section{Expressões Aritméticas} \label{section:expressoes-aritmeticas}
+
+\inlinebox{Esta secção corresponde à primeira parte da resolução do exercício 8. a) i) da ficha 1.}
+
+\par Relativamente às expressões aritméticas, nas aulas definimos que estas podem ser uma das seguintes:
+$$
+a ::= n \mid x \mid a_1 + a_2 \mid a_1 \times a_2 \mid a_1 - a_2
+$$
+\par Como uma extensão natural, decidi acrescentar também simétricos. Temos, assim, as seguintes opções para expressões aritméticas:
+$$
+a ::= n \mid x \mid -a \mid a_1 + a_2 \mid a_1 \times a_2 \mid a_1 - a_2
+$$
+\par Portanto, defini o seguinte tipo:
+\hsfile{Aexp.hs}{7}{13}
+
+\par De seguida, foi também definida uma instância de \classshow para a visualização correta das expressões aritméticas na saída da consola. Essa instância pode ser visualizada no ficheiro \textit{Aexp.hs}, linhas 18-53. A sua aparente complexidade é apenas para garantir uma saída "bonita".
+
+
+\section{Expressões Booleanas} \label{section:expressoes-booleanas}
+
+\inlinebox{Esta secção corresponde à segunda parte da resolução do exercício 8. a) i) da ficha 1.}
+\\
+
+\par No caso das expressões booleanas, nas aulas definimos que podem ser uma das seguintes:
+$$
+b_0 ::= \text{true} \mid \text{false} \mid a_1 = a_2 \mid a_1 \le a_2 \mid \neg b \mid b_1 \land b_2
+$$
+\par Por extensão natural, defini também as seguintes possibilidades para expressões booleanas:
+$$
+b ::= b_0 \mid a_1 > a_2 \mid a_1 \ge a_2 \mid a_1 < a_2 \mid b_1 \lor b_2
+$$
+
+\par Assim, a definição completa de expressões booleanas é:
+$$
+b ::= \text{true} \mid \text{false} \mid a_1 = a_2 \mid a_1 > a_2 \mid a_1 \ge a_2 \mid a_1 < a_2 \mid a_1 \le a_2 \mid \neg b \mid b_1 \land b_2 \mid b_1 \lor b_2
+$$
+
+\newpage
+
+
+\par A estrutura em Haskell correspondente a esta estrutura é:
+\hsfile{Bexp.hs}{9}{19}
+
+\par Tal como acontece nas expressões aritméticas, é também depois definida uma instância de \classshow para o tipo \textit{Bexp}.
+
+
+\section{Comandos da Linguagem While} \label{section:comandos-linguagem-while}
+
+\inlinebox{Esta secção corresponde à resolução do exercício 8. b) i) da ficha 1.}
+\\
+
+\par Nas aulas definimos os comandos da linguagem \while como podendo ser um dos seguintes:
+$$
+S ::= \text{skip} \mid x := a \mid S_1 ; S_2 \mid \text{if}\ b\ \text{then}\ S_1\ \text{else}\ S_2 \mid \text{while}\ b\ \text{do}\ S
+$$
+\par Como extensão, eu acrescentei também um comando \textit{if-then}, sem \textit{else}.
+
+\par Assim, a definição completa dos comandos da linguagem \while é:
+$$
+S ::= \text{skip} \mid x := a \mid S_1 ; S_2 \mid \text{if}\ b\ \text{then}\ S_1\ \text{else}\ S_2 \mid \text{if}\ b\ \text{then}\ S \mid \text{while}\ b\ \text{do}\ S
+$$
+
+\par Assim, podemos definir a seguinte estrutura para os comandos da linguagem \while:
+\hsfile{Stm.hs}{9}{15}
+
+\par Tal como nas restantes estruturas, existe também uma instância de \classshow definida para a estrutura \textit{Stm}.
+
+
+\chapter{Semântica Natural} \label{chapter:semantica-natural}
+
+\par Neste capítulo vai ser presente uma implementação de uma semântica natural para as expressões aritméticas, booleanas e comandos da linguagem \while.
+
+\section{Expressões Aritméticas} \label{section:semantica-natural-expressoes-aritmeticas}
+
+\inlinebox{Esta secção corresponde à primeira parte da resolução do exerício 8. a) iii) da ficha 1.}
+
+\par A função semântica $\mathcal{A}$ é uma função que aceita expressões aritméticas, um estado, e devolve o resultado de avaliar a expressão aritmética de entrada no estado especificado. Assim, pode ser definida em Haskell do seguinte modo:
+\hsfile{NS.hs}{15}{23}
+
+\par Esta implementação é bastante simples: qualquer expressão que seja só um número retorna só esse número; se for uma variável, é só consultar o seu valor no estado; se a expressão for o simétrico de outra, então a função retorna o resultado simétrico do valor da expressão constituinte; somas, multiplicações e subtrações também são só o resultado da respetiva soma, multiplicação ou subtração das duas expressões constituintes da expressão.
+
+\newpage
+
+\section{Expressões Booleanas} \label{section:semantica-natural-expressoes-booleanas}
+
+\inlinebox{Esta secção corresponde à segunda parte da resolução do exercício 8. a) iii) da ficha 1.}
+
+\par A função semântica $\mathcal{B}$ é uma função parecida à função semântica $\mathcal{A}$. De um modo geral, podemos dizer que a função semântica $\mathcal{B}$ atua sobre expressões booleanas, em vez de expressões aritméticas. Assim, pode ser definida do seguinte modo:
+\hsfile{NS.hs}{27}{40}
+
+\section{Comandos da Linguagem While} \label{section:semantica-natural-comandos-linguagem-while}
+
+\inlinebox{Esta secção corresponde à resolução dos exercícios 8. b) iii) e 8. b) iv) da ficha 1.}
+
+\par É agora pedida uma função que faça a avaliação de expressões da linguagem \while. Defini essa função de acordo com as regras da semântica natural que foram apresentadas nas aulas.
+\hsfile{NS.hs}{46}{62}
+
+\par Devido ao \parser que criei, e às instâncias de \classread e \classshow criadas, testar esta função é bastante fácil. Para tal, basta, no \ghci, importar o ficheiro \textit{NS.hs}, e executar a função main. Esta espera na sua entrada um programa \while e um estado inicial, imprimindo depois o estado final, após execução do programa \while.
+
+\par Apresenta-se a seguir a saída esperada de dois programas \while:
+
+\begin{mintedhaskell}{\$ ghci NS.hs}
+*NS> main
+---------------------------------------------------------
+> if x > 0 then y := x else if x < 0 then y := -x else z := 1 [x -> -1]
+> if x > 0 then {y := x} else {if x < 0 then {y := -x} else {z := 1}}
+  [x -> -1]
+> [x -> -1][y -> 1]
+---------------------------------------------------------
+
+---------------------------------------------------------
+> x := 1; while b > 0 do { x := x * a; b := b - 1 } [a -> 3][b -> 2]
+> x := 1; while b > 0 do {x := x * a; b := b - 1}
+  [a -> 3][b -> 2]
+> [a -> 3][b -> 0][x -> 9]
+---------------------------------------------------------
+\end{mintedhaskell}
+
+\par Nota: após introduzir um programa \while, a função main avalia a entrada dada, e se esta for válida, apresenta na saída o mesmo programa, sem alterações, após este ter sido convertido para as estruturas internas da linguagem \while.
+
+\par Nota 2: Para efeitos de legibilidade, o estado é sempre impresso numa linha separada das instruções.
+\\
+
+\par Em alternativa à função main, é possível executar a função evalNS introduzindo manualmente os parâmetros do comando \while e do estado. Basta, para isso, seguir o exemplo que se apresenta a seguir:
+
+\begin{mintedhaskell}{\$ ghci NS.hs}
+*NS> let c = read "if x > 0 then y := x else if x < 0 then y := -x else z := 1" :: Stm
+*NS> let s = read "[x -> 1]" :: State
+*NS> evalNS (c, s)
+[x -> 1][y -> 1]
+\end{mintedhaskell}
+
+\par Este processo encontra-se descrito no \autoref{appendix:interpretador}.
+
+
+\chapter{Semântica Operacional Estrutural \\ (\textit{Small-Step})} \label{chapter:semantica-small-step}
+
+\par Neste capítulo vai ser apresentada uma implementação de uma semântica \smallstep para as expressões aritméticas, booleanas e comandos da linguagem \while.
+
+\section{Expressões Aritméticas} \label{section:semantica-small-step-expressoes-aritmeticas}
+
+\inlinebox{Esta secção corresponde à resolução do exercício 5. a) da ficha 2.}
+
+\par Uma semântica de transições \smallstep  para as expressões aritméticas pode ser definida do seguinte modo:
+%%begin novalidate
+\begin{mintedhaskell}{\centertitle{Possível implementação de stepA}}
+stepA :: (Aexp, State) -> Either Val Aexp
+stepA (Num n,                     _)    = Left n
+stepA (Var v,                     s)    = Left $ fetch v s
+stepA (Sim x,                     s)    = case stepA (x, s) of
+                                              Left  x' -> Left  $ 0-x'
+                                              Right x' -> Right $ Sim x'
+
+stepA (Add  (Num a) (Num b),      s)    = Left $ a + b
+stepA (Add  (Num a)      b ,      s)    = case stepA (b, s) of
+                                              Left  b' -> Right $ Add (Num a) (Num b')
+                                              Right b' -> Right $ Add (Num a)      b'
+stepA (Add       a       b ,      s)    = case stepA (a, s) of
+                                              Left  a' -> Right $ Add (Num a')     b
+                                              Right a' -> Right $ Add      a'      b
+                                              
+(...)
+\end{mintedhaskell}
+%%end novalidate
+
+\newpage
+
+\par Este padrão da função stepA, para expressões aritméticas Add, repete-se novamente para multiplicações e subtrações. Assim, foi extraído para uma função auxiliar:
+\hsfile{SOS.hs}{14}{20}
+
+\par Assim, a implementação final da função stepA é a seguinte:
+\hsfile{SOS.hs}{22}{32}
+
+\section{Expressões Booleanas} \label{section:semantica-small-step-expressoes-booleanas}
+
+\inlinebox{Esta secção corresponde à resolução dos exercícios 5. b) e c) da ficha 2.}
+
+\par Uma semântica de transições \smallstep para as expressões booleanas pode ser definida de um modo análogo à semântica de transições para expressões aritméticas, com as devidas alterações. Essa função fica com o seguinte tipo: \mintinline{haskell}{stepB :: (Bexp, State) -> Either Bool Bexp}.
+
+\par Para a avaliação de expressões base, a sua implementação é simples:
+\hsfile{SOS.hs}{40}{41}
+
+\par Para a avaliação de expressões que envolvem a comparação entre duas expressões aritméticas, podemos recorrer à função auxiliar stepAux definida acima, pois o padrão é o mesmo:
+\hsfile{SOS.hs}{43}{47}
+
+\par Para a avaliação de negações, e devido ao facto de que defini dois construtores especiais para os tipos Verdadeiro e Falso, então a implementação é um pouco mais complicada:
+\hsfile{SOS.hs}{49}{53}
+\par Esta implementação tem duas partes essenciais:
+\begin{itemize}
+    \item Parte que envolve a avaliação da negação de uma expressão booleana já totalmente simplificada (\textit{SOS.hs}, linhas 49-50) - Neste caso, a função stepB apenas retorna a negação da expressão booleana
+    \item Parte que envolve a negação de uma expressão booleana não simplificada (\textit{SOS.hs}, linhas 51-53) - Neste caso, a função stepB vai executar um passo de avaliação da expressão booleana não simplificada. Se dessa execução tiver resultado um valor booleano, então a função stepB retorna uma expressão que é a negação esse valor (após utilizar a função toBexp para converter um valor booleano do Prelude para um valor booleano do tipo Bexp). Caso contrário, a função simplesmente retorna a negação da expressão não simplificada.
+\end{itemize}
+
+\par Para a avaliação de conjunções ou disjunções, a implementação tem três partes essenciais:
+\begin{itemize}
+    \item A avaliação de expressões onde ambos os membros estão simplificados (\textit{SOS.hs}, linhas 55-58 e 67-71) - Neste caso, apenas retornamos o resultado dessa avaliação.
+    \item A avaliação de expressões onde apenas o membro direito está simplificado (\textit{SOS.hs}, linhas 59-61 e 72-74) - Neste caso, vamos executar um passo de avaliação do membro direito, retornando depois uma nova expressão que corresponde à avaliação da mesma expressão, mas desta vez com a simplificação efetuada no membro direito.
+    \item A avaliação de expressões onde o membro esquerdo não está simplificado (\textit{SOS.hs}, linhas 63-65 e 75-77) - Neste caso, vamos executar um passo de avaliação do membro esquerdo. A função depois retorna uma nova expressão, que corresponde à avaliação da mesma expressão, mas com a diferença de que o membro esquerdo está um pouco mais simplificado.
+\end{itemize}
+
+\par A implementação da conjunção fica assim:
+\hsfile{SOS.hs}{55}{65}
+
+\par A implementação da disjunção é análoga. Pode ser encontrada no ficheiro \textit{SOS.hs}, linhas 66-77.
+\\
+
+\par Relativamente à implementação curto-circuito, como podemos ver, na linha 62 acima mostrada, temos um caso especial: no caso de uma conjunção onde o lado esquerdo é falso, então a função stepB retorna imediatamente o valor falso, sem avaliar o lado direito da expressão. O mesmo acontece no caso da disjunção, mas no respetivo caso (ou seja, uma disjunção onde o lado esquerdo é verdadeiro):
+\hsfile{SOS.hs}{71}{71}
+
+\newpage
+
+\section{Comandos da Linguagem While} \label{section:semantica-small-step-comandos-linguagem-while}
+
+\inlinebox{Esta secção corresponde à resolução do exercício 6. da ficha 2.}
+
+\par É agora pedida a definição da função stepSOS. Esta função implementa a relação de transição $<C, s> \implies \gamma$. Como $\gamma$ pode ser tanto um estado final (se não for possível executar mais nada no programa de entrada) ou um novo programa e um novo estado ($<C, s>$), decidi, por sugestão da professora, tipar a função do seguinte modo: \mintinline{haskell}{stepSOS :: (Stm, State) -> Either State (Stm, State)}.
+
+\par Assim, a implementação desta função apenas segue as regras da semântica \smallstep que foram ensinadas nas aulas:
+\hsfile{SOS.hs}{80}{101}
+
+\newpage
+
+\par Com recurso à função de \textit{bind} do \textit{Monad Either}, a função nstepsSOS pode ser escrita do seguinte modo:
+\hsfile{SOS.hs}{105}{106}
+
+\par A função evalSOS também pode ser escrita em apenas uma linha devido ao \textit{binding} monádico do \textit{Either}:
+\hsfile{SOS.hs}{110}{110}
+
+\par Isto funciona pois existe a garantia de que a função stepSOS apenas retorna apenas um estado se e só se não é possível executar mais passos no programa que foi dado como entrada.
+
+\par Novamente, para testar esta função, podemos executar com recurso ao \ghci:
+\begin{mintedhaskell}{\$ ghci SOS.hs}
+*SOS> main
+---------------------------------------------------------
+> if x > 0 then y := x else if x < 0 then y := -x else z := 1 [x -> -1]
+> if x > 0 then {y := x} else {if x < 0 then {y := -x} else {z := 1}}
+  [x -> -1]
+> if -1 > 0 then {y := x} else {if x < 0 then {y := -x} else {z := 1}}
+  [x -> -1]
+> if false then {y := x} else {if x < 0 then {y := -x} else {z := 1}}
+  [x -> -1]
+> if x < 0 then {y := -x} else {z := 1}
+  [x -> -1]
+> if -1 < 0 then {y := -x} else {z := 1}
+  [x -> -1]
+> if true then {y := -x} else {z := 1}
+  [x -> -1]
+> y := -x
+  [x -> -1]
+> y := 1
+  [x -> -1]
+> [x -> -1][y -> 1]
+---------------------------------------------------------
+---------------------------------------------------------
+> x := 1; while b > 0 do { x := x * a; b := b - 1 } [a -> 3][b -> 2]
+(... Saída omitida devido ao tamanho ...)
+> skip
+  [a -> 3][b -> 0][x -> 9]
+> [a -> 3][b -> 0][x -> 9]
+---------------------------------------------------------
+\end{mintedhaskell}
+
+\par Como podemos ver, com recurso à função main, é possível consultar a saída de todos os passos individuais da execução de um programa \while.
+
+\par No entanto, tal como descrito no capítulo anterior, também é possível executar as funções individualmente e manualmente, segundo o processo descrito no \autoref{appendix:interpretador}.
+
+\chapter{Máquinas Abstratas} \label{chapter:maquinas-abstratas}
+
+\par Nesta secção é descrito o processo de construção de uma implementação da semântica das três máquinas abstratas AM, AM1 e AM2.
+
+\section{Máquina AM} \label{section:maquina-am}
+
+\par Antes de começar a resolver o exercício 5 da ficha 3, achei pertinente implementar a máquina AM. A maior parte do código poderá depois ser facilmente adaptado para as máquinas AM1 e AM2.
+
+\subsection{Instruções e Estrutura} \label{subsection:estrutura-maquina-am}
+
+\par Sendo assim, comecei por criar uma estrutura correspondente a todas as instruções que a máquina AM consegue executar. Visto que estendi a linguagem \while com comandos extra, estendi também as instruções da máquina com instruções compatíveis com as extensões introduzidas na linguagem \while:
+\hsfile{AMCode.hs}{7}{25}
+
+\par Assim, código da máquina AM é representado pelo seguinte tipo:
+\hsfile{AMCode.hs}{27}{27}
+
+\par Tal como explicado anteriormente, o tipo \textit{Code} é implementado com recurso a \textit{newtype} para ser possível criar uma implementação de \classshow para o mesmo. Não existe implementação de \classread para este tipo, pois todo o código deste tipo é gerado a partir de código da linguagem \while.
+
+\par Defini também um tipo para a \textit{Stack}:
+\hsfile{Stack.hs}{5}{5}
+
+\par O tipo \textit{Val} é definido no ficheiro \textit{State.hs}. É utilizado em todo o lado em vez de utilizar diretamente \textit{Int}, apenas para manter a consistência de tipos em todo o código. Assim, se fosse necessário alterar, essa alteração apenas tinha de ser feita num lugar.
+
+\par A stack da máquina AM é apenas uma stack de inteiros. Isto é uma simplificação em relação ao que demos nas aulas. Valores booleanos são representados de acordo com a convenção da linguagem C:
+\begin{itemize}
+    \item Verdadeiro - Qualquer valor inteiro diferente de 0
+    \item Falso - Valor inteiro 0
+\end{itemize}
+
+\par Assim, a máquina AM é um triplo: \mintinline{haskell}{(Code, Stack, State)}.
+
+\subsection{Semântica} \label{subsection:semantica-maquina-am}
+
+\par A semântica das instruções foi atribuida de acordo com o ensinado nas aulas.
+
+\par As instruções PUSH, ADD, MULT, SUB, TRUE e FALSE são as mais simples de atribuir semântica:
+\hsfile{AM.hs}{15}{20}
+
+\newpage
+
+\par As instruções de comparação (EQ, GT, GE, LT, LE) seguem todas a seguinte estrutura, com as devidas adaptações:
+\hsfile{AM.hs}{23}{24}
+
+\par As instruções de conjunção e disjunção seguem a seguinte estrutura, com as devidas adaptações:
+\hsfile{AM.hs}{35}{36}
+
+\par A instrução de negação também tem uma implementação simples:
+\hsfile{AM.hs}{39}{40}
+
+\par As instruções FETCH e STORE necessitam de aceder ao estado. Para isso, fazem uso das funções \textit{fetch} e \textit{update} definidas no ficheiro \textit{State.hs}:
+\hsfile{State.hs}{20}{30}
+
+\par Assim, FETCH e STORE definem-se como:
+\hsfile{AM.hs}{42}{47}
+
+\par A instrução NOOP simplesmente não atua sobre o estado nem a stack. Por ser tão trivial, não irei apresentar a sua definição.
+
+\par A instrução BRANCH pode ser definida do seguinte modo:
+\hsfile{AM.hs}{53}{55}
+
+\par Por último, a instrução LOOP é definida à custa da instrução BRANCH, tal como ensinado nas aulas:
+\hsfile{AM.hs}{58}{58}
+
+\newpage
+
+\subsection{Compilador de programas \while} \label{subsection:compilador-maquina-am}
+
+\par Um compilador é, neste contexto, apenas uma função com o seguinte tipo: \mintinline{haskell}{cmpS :: Stm -> Code}.
+
+\par Mas antes de ser possível compilar programas \while completos, temos de ser capazes de compilar expressões aritméticas. Assim, a compilação de expressões aritméticas dá-se do seguinte modo:
+\hsfile{AM.hs}{71}{79}
+
+\par A função cmpAux apresentada é uma abstração de um padrão comum que se repete várias vezes ao longo do compilador, onde as instruções geradas têm o seguinte padrão: op2:op1:OP, onde op2 são as instruções que levam à produção do operando 2 no topo da stack, op1 são as instruções que levam à produção do operando 1 no topo da stack, e OP é a instrução corresponde à operação que se pretende efetuar (como por exemplo uma soma). Está definida assim:
+\hsfile{AM.hs}{66}{68}
+
+\newpage
+
+\par Também temos de ser capazes de compilar expressões booleanas:
+\hsfile{AM.hs}{82}{97}
+
+\par Podemos agora compilar qualquer expressão da linguagem \while:
+\hsfile{AM.hs}{100}{115}
+
+\newpage
+
+\subsection{Função Semântica $S_{am}$} \label{subsection:funcao_semantica_am}
+
+\par A função semântica $S_{am}$ pode ser definida do seguinte modo:
+\hsfile{AM.hs}{118}{120}
+
+\par Esta função pode, como de costume, ser testada no \ghci:
+\begin{mintedhaskell}{\$ ghci AMRepl.hs}
+*AMRepl> sAM (read "while x > 0 do x := x - 1") (read "[x -> 3]")
+[x -> 0]
+\end{mintedhaskell}
+
+\newpage
+
+\section{Máquina AM1} \label{section:maquina-am1}
+
+\inlinebox{Esta secção corresponde à resolução dos exercícios 5. a), b) e c) da ficha 3.}
+
+\subsection{Memória} \label{subsection:estrutura-memoria}
+
+\par A arquitetura da máquina AM1 substitui o estado por uma memória, análoga à memória de um computador tradicional: é apenas uma grande lista de valores inteiros. Assim, defini uma estrutura especializada para esta memória, bem como funções para a manipular:
+\hsfile{Memory.hs}{5}{6}
+\hsfile{Memory.hs}{13}{24}
+
+\par A função get é bastante simples: apenas consulta na memória o valor do endereço que foi passado de entrada.
+
+\par A função put já é mais complexa: dado um endereço e um valor, tem de colocar na memória esse valor, mas no endereço certo. Se, por acaso, a lista que representa a memória for demasiado pequena, então a função put tem de aumentar o tamanho da lista. Cada caso especial é tratado individualmente na função.
+
+\subsection{Instruções e Estrutura} \label{subsection:estrutura-maquina-am1}
+
+\par Segundo o pedido no exercício, a máquina AM1 deixa de ter as instruções FETCH-x e STORE-x, passando a ter, respetivamente, as instruções GET-n e PUT-n.
+
+\par Isto é representado na lista de instruções da máquina AM1 pelas seguintes alterações:
+\hsfile{AM1Code.hs}{22}{23}
+
+\subsection{Semântica} \label{subsection:semantica-maquina-am1}
+
+\par Mantém-se a maior parte da semântica anteriormente atribuída. No entanto, foram removidas as implementações de semântica relativas às instruções FETCH e STORE, sendo introduzida semântica para as instruções GET e PUT:
+\hsfile{AM1.hs}{44}{49}
+
+\subsection{Compilador} \label{subsection:compilador-maquina-am1}
+
+\par O compilador desta máquina é, geralmente, igual ao compilador da máquina AM. No entanto, o compilador de AM1 não aceita apenas um programa \while; aceita também um Estado. Um estado é uma abstração conveniente que já tinha sido anteriormente criada, e que se adequa perfeitamente às nossas necessidades: este estado será responsável por associar às variáveis do programa \while localizações na memória.
+
+\par A função de atribuição de endereço a uma variável é simples:
+\hsfile{Memory.hs}{40}{44}
+
+\par Esta função é simples: consulta o estado à procura da variável pedida. Se por acaso essa variável não existir, então atribui-lhe um endereço: esse endereço é simplesmente o número de variáveis já com endereço atribuído + 1.
+
+\par Assim, para compilar Assignments da linguagem \while, é necessário ter em conta os endereços:
+\hsfile{AM1.hs}{107}{110}
+
+\par Nas restantes equações das funções de compilação, é apenas necessário ter cuidado para gerir corretamente o estado, atualizando-o sempre que necessário, ou sempre que possam ter ocorrido alterações no mesmo em execuções recursivas da função de compilação.
+
+\subsection{Função Semântica $S_{am1}$} \label{subsection:funcao_semantica_am1}
+
+\par A função semântica $S_{am1}$ pode ser definida do seguinte modo:
+\hsfile{AM1.hs}{130}{132}
+
+\par Esta função pode, como de costume, ser testada no \ghci:
+\begin{mintedhaskell}{\$ ghci AM1Repl.hs}
+*AM1Repl> sAM1 (read "while x > 0 do x := x - 1") (setupMemory (read "[x -> 3]") (read "[x -> 0]") (Memory []))
+0
+\end{mintedhaskell}
+
+A função setupMemory recebe dois estados: o primeiro é o estado inicial das variáveis do programa While; o segundo é a associação entre o nome de uma variável e o seu endereço de memória. O terceiro argumento é para permitir uma recursividade na definição da função; basta ser inicializado como vazio.
+
+\newpage
+
+\section{Máquina AM2} \label{section:maquina-m2}
+
+\inlinebox{Esta secção corresponde à resolução dos exercícios 5. d), e) e f) da ficha 3.}
+
+\subsection{Instruções e Estrutura} \label{subsection:estrutura-maquina-am2}
+
+\par A máquina AM2 introduz, em relação à AM1, um \textit{program counter} para que não seja necessária modificação do código da máquina. Esta máquina substitui também as instruções BRANCH() e LOOP() por instruções de LABEL-$\ell$, JUMP-$\ell$ e JUMPFALSE-$\ell$. Assim, a semântica desta máquina nunca modifica o código da mesma; apenas modifica o \textit{program counter}.
+
+\par As instruções JUMP-$\ell$ e JUMPFALSE-$\ell$ saltam para o endereço onde se encontra a instrução LABEL-$\ell$. Sendo assim, quando encontra uma destas instruções, a máquina tem pelo menos duas opções:
+\begin{enumerate}
+    \item Procurar em todo o código onde se encontra o LABEL pretendido;
+    \item A própria instrução JUMP-$\ell$ e JUMPFALSE-$\ell$ pode incluir o endereço relativo da instrução LABEL-$\ell$ pretendida.
+\end{enumerate}
+\par A minha implementação opta pela segunda opção.
+
+\par Sendo assim, as novas instruções introduzidas são:
+\hsfile{AM2Code.hs}{25}{27}
+
+\newpage
+
+\subsection{Semântica} \label{subsection:semantica-maquina-am2}
+
+\par A semântica da maior parte das instruções foi alterada para não modificar o código, mas sim o \textit{program counter}.
+
+\par Às instruções de JUMP e JUMPFALSE foi-lhes atribuida a seguinte semântica:
+\hsfile{AM2.hs}{63}{68}
+
+\subsection{Compilador} \label{subsection:compilador-maquina-am2}
+
+\par O compilador da linguagem \while para os comandos If-Then-Else, If-Then, e While tiveram de ser alterados para acomodar as novas instruções.
+
+\par O número do último \textit{label} atribuído é guardado no Estado que guarda os endereços das variáveis, sob o nome "\$LABEL". Sempre que é necessário criar um novo \textit{label}, o estado é consultado para saber qual deve ser o próximo número de \textit{label} a atribuir.
+
+\par No caso do If-Then-Else, foi criado um \textit{label} no código que é o corpo do Then e o corpo do Else. As instruções geradas são, portanto, a avaliação da condição b; depois um JUMPFALSE, que, se b for falso, salta para o corpo do Else, recorrendo ao \textit{label} lá colocado. caso contrário, a execução continua normalmente.
+\hsfile{AM2.hs}{128}{135}
+
+\newpage
+
+\par O caso do While contém dois \textit{labels}: um dos \textit{labels} corresponde ao código que se encontra APÓS TODO o ciclo While; outro \textit{label} encontra-se exatamente no início do ciclo While. O While é depois implementado com dois saltos: um JUMPFALSE que salta para o \textit{label} final, no caso de a condição do While ser falsa; e, no final da execução do corpo do While, encontra-se um JUMP incondicional que salta sempre para o \textit{label} que se encontra no início de todo o ciclo While.
+\hsfile{AM2.hs}{139}{145}
+
+\subsection{Função semântica $S_{am2}$} \label{subsection:funcao_semantica_am2}
+
+\par A função semântica $S_{am2}$ é idêntica à função semântica induzida por AM1:
+\hsfile{AM2.hs}{151}{153}
+
+\par Esta função pode, como de costume, ser testada no \ghci:
+\begin{mintedhaskell}{\$ ghci AM2Repl.hs}
+*AM2Repl> sAM2 (read "while x > 0 do x := x - 1") (setupMemory (read "[x -> 3]") (read "[x -> 0]") (Memory []))
+0
+\end{mintedhaskell}
+
+\chapter{Conclusão} \label{chapter:concl}
+
+\par Este trabalho permitiu uma profunda consolidação dos conhecimentos sobre todas as semânticas que estudamos ao longo das aulas da UC; permitiu também uma profunda consolidação de conhecimentos sobre a linguagem de programação Haskell.
+
+\appendix \label{appendix}
+
+
+\chapter{Parser para a linguagem While} \label{appendix:parser}
+
+\par No ficheiro \textit{Parser.y} está incluido um \parser para a linguagem \while que estudamos, bem como a notação que utilizamos para os estados das variáveis. Este \parser é baseado numa gramática independente de contexto, e utiliza a \textit{library} Happy para o seu funcionamento.
+
+\par A sua compilação num ficheiro Haskell é simples: após instalação, basta executar o comando \textit{happy Parser.y}. Por conveniência, é já incluído um ficheiro Parser.hs, derivado a partir da descrição da gramática, no ficheiro ZIP que contém todo o trabalho.
+
+\par Apenas com a inclusão do \parser é que são declaradas instâncias de \classread para os tipos da linguagem \while; se este \parser não for incluido, não é possível recorrer às instâncias de \classread.
+
+\chapter{Como correr os vários programas no interpretador GHCi} \label{appendix:interpretador}
+
+\par Para correr um dos programas no \ghci é só necessário carregar o ficheiro correto no \ghci. Cada semântica tem o seu ficheiro principal:
+
+\begin{itemize}
+    \item Semântica Natural - NS.hs
+    \item Semântica Small-Step - SOS.hs
+    \item Máquina AM - AMRepl.hs
+    \item Máquina AM1 - AM1Repl.hs
+    \item Máquina AM2 - AM2Repl.hs
+\end{itemize}
+
+\par Se for incluido um destes ficheiros, é sempre possível chamar a função main, que inicia um Read-Eval-Print-Loop (REPL), que espera, no stdin, por programas da linguagem \while, e depois, dependendo do programa carregado, executa os vários passos de execução desse programa de acordo com a semântica que está carregada, ou no caso das máquinas, compila o código, e executa na respetiva máquina.
+
+\par A execução de qualquer um destes ficheiros também incluí todos os símbolos necessários à construção de expressões para a respetiva semântica e/ou máquina.
+
+\chapter{Como compilar os vários programas com recurso à Makefile} \label{appendix:compilar}
+
+\par Com recurso à Makefile, é possível executar \textit{make} para compilar um executável por programa.
+
+\par Podem ser compilados os seguintes programas:
+
+\begin{itemize}
+    \item make NS
+    \item make SOS
+    \item make AM
+    \item make AM1
+    \item make AM2
+\end{itemize}
+
+\par A execução de um programa compilado deste modo funciona do mesmo modo do que a execução da função main descrita no \autoref{appendix:interpretador}.
+
+\end{document}
